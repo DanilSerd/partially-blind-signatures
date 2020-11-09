@@ -1,0 +1,28 @@
+{
+  "name": "partially-blind-signatures",
+  "version": "1.0.0",
+  "description": "Implementation of Partially Blind Signatures as per Masayuki Abe and Tatsuaki Okamoto",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DanilSerd/partially-blind-signatures.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/DanilSerd/partially-blind-signatures/issues"
+  },
+  "homepage": "https://github.com/DanilSerd/partially-blind-signatures#readme",
+  "devDependencies": {
+    "@types/bn.js": "^4.11.6",
+    "@types/elliptic": "^6.4.12",
+    "@types/node": "^14.14.6",
+    "typescript": "^4.0.5"
+  },
+  "dependencies": {
+    "elliptic": "^6.5.3"
+  }
+}
