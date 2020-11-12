@@ -1,80 +1,94 @@
-import { randomBytes } from 'crypto'
 import * as ell from 'elliptic'
 import BN from 'bn.js'
 import * as hash from 'hash.js'
 import { HKDF } from './hkdf'
 
-// @ts-ignore
-const curve = ell.curves.secp256k1.curve as ell.curve.short
+const Secp256k1Curve = new ell.ec('secp256k1')
 
-const generateRandom256Num = () => {
-  return new BN(randomBytes(32))
-}
-
-const insecureHashToPoint = (info: string, curve: ell.curve.short) => {
+const hashToPoint = (info: string, curve: ell.ec = Secp256k1Curve) => {
+  const crv = curve.curve as ell.curve.short
   const hkdf = new HKDF(
-    "sha256", 
-    Buffer.from(info, 'utf8')
+    Secp256k1Curve.hash,
+    info
   )
 
-  for (let i = 0x0; true; i++) {
+  for (let i = 0; i < 1000; i++) {
     const infoHashed = hkdf.derive(
-      Buffer.from(i.toString(), "utf8"),
+      i.toString(),
       32
     )
     try {
-      return curve.pointFromX(new BN(infoHashed).umod(curve.p)) 
+      return crv.pointFromX(new BN(infoHashed).umod(crv.p)) 
     } catch {
       continue
     }
   }
+  throw Error("Couldn't find a point")
 }
 
-interface ABMessage {
+interface Message1 {
   a: ell.curve.base.BasePoint
   b: ell.curve.base.BasePoint
 }
 
-interface RCSDMessge {
+type Message2 = BN
+
+interface Message3 {
   r: BN
   c: BN
   s: BN
   d: BN
 }
 
-type EMessage = BN
 
-interface Signiture {
-  p: BN
-  w: BN
-  o: BN
-  g: BN
+class Signiture {
+  constructor(public p: BN, public w: BN, public o: BN, public g: BN, public curve: ell.ec = Secp256k1Curve) {}
+
+  verify(msg: string, info: string, pubKey: ell.curve.base.BasePoint) {
+    const curve = this.curve.curve as ell.curve.base
+    if (!curve.validate(pubKey))
+      throw new Error('Invalid public key');
+    const z = hashToPoint(info)
+    const m = new BN(hash.sha256().update(msg).digest())
+  
+    const completeConstruction = 
+      curve.g.mul(sig.p).add(pubKey.mul(sig.w)).getX()
+        .or(curve.g.mul(sig.o).add(z.mul(sig.g)).getX())
+        .or(z.getX())
+        .or(m)
+  
+    const right = new BN(hash.sha256().update(completeConstruction).digest())
+    const left = sig.w.add(sig.g).mod(curve.n)
+
+    return left.eq(right)
+  }
+
 }
 
 class Signer {
   private sk: BN
-  private curve: ell.curve.short
+  private curve: ell.curve.base
   private u: BN
   private s: BN
   private d: BN
   infoBase: ell.curve.base.BasePoint
-  constructor(sk: BN, info: string) {
+  constructor(sk: BN, info: string, curve: ell.ec = Secp256k1Curve) {
     this.sk = sk
-    this.curve = curve
-    this.u = generateRandom256Num().umod(this.curve.n)
-    this.s = generateRandom256Num().umod(this.curve.n)
-    this.d = generateRandom256Num().umod(this.curve.n)
-    this.infoBase = insecureHashToPoint(info, this.curve)
+    this.curve = curve.curve as ell.curve.base
+    this.u = Secp256k1Curve.genKeyPair().getPrivate()
+    this.s = Secp256k1Curve.genKeyPair().getPrivate()
+    this.d = Secp256k1Curve.genKeyPair().getPrivate()
+    this.infoBase = hashToPoint(info, curve)
   }
 
-  createAB(): ABMessage {
+  createMessage1(): Message1 {
     return {
       a: this.curve.g.mul(this.u),
       b: this.curve.g.mul(this.s).add(this.infoBase.mul(this.d))
     }
   }
 
-  createRCSD(e: BN): RCSDMessge {
+  createMessage3(e: Message2): Message3 {
     const c = e.sub(this.d).umod(this.curve.n)
     return {
       s: this.s,
@@ -91,39 +105,33 @@ class Signer {
 
 class Requester {
   private signerPublicKey: ell.curve.base.BasePoint
-  private curve: ell.curve.short
+  private curve: ell.curve.base
+  private _eccrv: ell.ec
   private message: string
-  infoBase: ell.curve.base.BasePoint
+  private infoBase: ell.curve.base.BasePoint
   private t1: BN
   private t2: BN
   private t3: BN
   private t4: BN
-  constructor(signerPublicKey: ell.curve.base.BasePoint, info: string, message: string) {
+  constructor(signerPublicKey: ell.curve.base.BasePoint, info: string, message: string, curve: ell.ec = Secp256k1Curve) {
     this.signerPublicKey = signerPublicKey
     this.message = message
-    this.curve = curve
-    this.infoBase = insecureHashToPoint(info, this.curve)
-    this.t1 = generateRandom256Num().umod(this.curve.n)
-    this.t2 = generateRandom256Num().umod(this.curve.n)
-    this.t3 = generateRandom256Num().umod(this.curve.n)
-    this.t4 = generateRandom256Num().umod(this.curve.n)
+    this.curve = curve.curve as ell.curve.base
+    this._eccrv = curve
+    this.infoBase = hashToPoint(info, this._eccrv)
+    this.t1 = Secp256k1Curve.genKeyPair().getPrivate()
+    this.t2 = Secp256k1Curve.genKeyPair().getPrivate()
+    this.t3 = Secp256k1Curve.genKeyPair().getPrivate()
+    this.t4 = Secp256k1Curve.genKeyPair().getPrivate()
   }
 
-  createE(m: ABMessage): EMessage {
+  createMessage2(m: Message1): Message2 {
     const alpha = m.a.add(this.curve.g.mul(this.t1)).add(this.signerPublicKey.mul(this.t2))
     const bravo = m.b.add(this.curve.g.mul(this.t3)).add(this.infoBase.mul(this.t4))
-    console.log("Construction")
-    console.log("a:  " + alpha.getX().toBuffer().toString('hex'))
-    console.log("b:  " + bravo.getX().toBuffer().toString('hex'))
-    console.log("z:  " + this.infoBase.getX().toBuffer().toString('hex'))
-    console.log("message: " + Buffer.from(this.message, "utf8").toString('hex'))
-    const echo = Buffer.concat([
-      alpha.getX().toBuffer(),
-      bravo.getX().toBuffer(),
-      this.infoBase.getX().toBuffer(),
-      Buffer.from(this.message, "utf8")
-    ])
-    console.log(new BN(hash.sha256().update(echo).digest()).toString('hex'))
+    const echo = alpha.getX()
+      .or(bravo.getX())
+      .or(this.infoBase.getX())
+      .or(new BN(hash.sha256().update(this.message).digest()))
     
     return new BN(hash.sha256().update(echo).digest())
       .sub(this.t2)
@@ -131,54 +139,26 @@ class Requester {
       .umod(this.curve.n)
   }
 
-  createSig(m: RCSDMessge): Signiture {
-    return {
-      p: m.r.add(this.t1).umod(this.curve.n),
-      w: m.c.add(this.t2).umod(this.curve.n),
-      o: m.s.add(this.t3).umod(this.curve.n),
-      g: m.d.add(this.t4).umod(this.curve.n)
-    }
+  createSig(m: Message3): Signiture {
+    return new Signiture(
+      m.r.add(this.t1).umod(this.curve.n),
+      m.c.add(this.t2).umod(this.curve.n),
+      m.s.add(this.t3).umod(this.curve.n),
+      m.d.add(this.t4).umod(this.curve.n),
+      this._eccrv
+    )
   }
 }
 
-const validateSig = (sig: Signiture, message: string, info: string, signerPublicKey: ell.curve.base.BasePoint, curve: ell.curve.short) => {
-  const z = insecureHashToPoint(info, curve)
 
-  console.log("")
-  console.log("Check")
-  console.log("a: " + curve.g.mul(sig.p).add(signerPublicKey.mul(sig.w)).getX().toBuffer().toString('hex'))
-  console.log("b: " + curve.g.mul(sig.o).add(z.mul(sig.g)).getX().toBuffer().toString('hex'))
-  console.log("z: " + z.getX().toBuffer().toString('hex'))
-  console.log("message: " + Buffer.from(message, "utf8").toString('hex'))
-
-  const completeConstruction = Buffer.concat([
-    curve.g.mul(sig.p).add(signerPublicKey.mul(sig.w)).getX().toBuffer(),
-    curve.g.mul(sig.o).add(z.mul(sig.g)).getX().toBuffer(),
-    z.getX().toBuffer(),
-    Buffer.from(message, "utf8")
-  ])
-
-  const left = new BN(hash.sha256().update(completeConstruction).digest())
-  console.log(left.toString('hex'))
-  const right = sig.w.add(sig.g).mod(curve.n)
-  console.log("")
-  console.log(left.toString('hex'))
-  console.log(right.toString('hex'))
-
-  return left.eq(right)
-
-}
-
-
-
-const s = new Signer(generateRandom256Num(), "info")
+const s = new Signer(Secp256k1Curve.genKeyPair().getPrivate(), "info")
 const r = new Requester(s.getPubKey(), 'info', 'super secret message')
 
-const ab = s.createAB()
-const e = r.createE(ab)
-const rcsd = s.createRCSD(e)
+const ab = s.createMessage1()
+const e = r.createMessage2(ab)
+const rcsd = s.createMessage3(e)
 const sig = r.createSig(rcsd)
 
 console.log(
-  validateSig(sig, 'super secret message', "info", s.getPubKey(), curve)
+  sig.verify('super secret message', "info", s.getPubKey())
 )

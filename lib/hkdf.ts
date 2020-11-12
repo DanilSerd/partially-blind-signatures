@@ -1,45 +1,42 @@
-import * as crypto from 'crypto'
+import * as hash from 'hash.js'
 
-const zeros = (length: number) => {
-  return Buffer.alloc(length);
+const zeros = (length: number): number[] => {
+  return new Array(length).fill(0)
 }
 
 export class HKDF {
-  hashAlg: string;
+  hashAlg: Sha256;
   hashLength: number;
-  salt: Buffer;
-  ikm: Buffer;
-  prk: Buffer;
-  constructor(hashAlg: string, ikm: Buffer, salt?: Buffer) {
+  prk: number[];
+  constructor(hashAlg: Sha256, ikm: string) {
     this.hashAlg = hashAlg;
-    
-    // create the hash alg to see if it exists and get its length
-    const hash = crypto.createHash(this.hashAlg);
-    this.hashLength = hash.digest().length;
 
-    this.salt = salt || zeros(this.hashLength);
-    this.ikm = ikm;
+    this.hashLength = hashAlg.outSize;
 
-    // now we compute the PRK
-    const hmac = crypto.createHmac(this.hashAlg, this.salt);
-    hmac.update(this.ikm);
+    const hmac = hash.hmac(this.hashAlg, zeros(this.hashLength));
+    hmac.update(ikm);
     this.prk = hmac.digest();
   }
-  derive(info: Buffer, size: number) {
-    let prev = Buffer.alloc(0);
-    const output = Buffer.alloc(size);
+  derive(info: string, size: number) {
+    // @ts-ignore We don't need enc here
+    let infoArray = hash.utils.toArray(info)
+    let prev: number[] = new Array(0);
+    let output: number[] = [];
     const num_blocks = Math.ceil(size / this.hashLength);
   
     for (var i=0; i<num_blocks; i++) {
-      const hmac = crypto.createHmac(this.hashAlg, this.prk);
-      const input = Buffer.concat([
-        prev, 
-        info, 
-        Uint8Array.from([0x01 * (i+1)])
-      ]);
+      const hmac = hash.hmac(this.hashAlg, this.prk);
+      const input = [
+        ...prev,
+        ...infoArray,
+        0x01 * (i+1)
+      ]
       hmac.update(input);
       prev = hmac.digest();
-      output.write(prev.toString("binary"), this.hashLength * i, this.hashLength, 'binary');
+      output = [
+        ...output,
+        ...prev
+      ];
     }
     return output
   }
