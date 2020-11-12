@@ -1,30 +1,9 @@
 import * as ell from 'elliptic'
 import BN from 'bn.js'
 import * as hash from 'hash.js'
-import { HKDF } from './hkdf'
+import { hashToPoint } from './hkdf'
 
-const Secp256k1Curve = new ell.ec('secp256k1')
-
-const hashToPoint = (info: string, curve: ell.ec = Secp256k1Curve) => {
-  const crv = curve.curve as ell.curve.short
-  const hkdf = new HKDF(
-    Secp256k1Curve.hash,
-    info
-  )
-
-  for (let i = 0; i < 1000; i++) {
-    const infoHashed = hkdf.derive(
-      i.toString(),
-      32
-    )
-    try {
-      return crv.pointFromX(new BN(infoHashed).umod(crv.p)) 
-    } catch {
-      continue
-    }
-  }
-  throw Error("Couldn't find a point")
-}
+export const Secp256k1Curve = new ell.ec('secp256k1')
 
 interface Message1 {
   a: ell.curve.base.BasePoint
@@ -44,7 +23,7 @@ interface Message3 {
 class Signiture {
   constructor(public p: BN, public w: BN, public o: BN, public g: BN, public curve: ell.ec = Secp256k1Curve) {}
 
-  verify(msg: string, info: string, pubKey: ell.curve.base.BasePoint) {
+  verify(msg: string, info: string, pubKey: ell.curve.base.BasePoint): boolean {
     const curve = this.curve.curve as ell.curve.base
     if (!curve.validate(pubKey))
       throw new Error('Invalid public key');
@@ -61,6 +40,10 @@ class Signiture {
     const left = sig.w.add(sig.g).mod(curve.n)
 
     return left.eq(right)
+  }
+
+  encode() {
+    this.p.byteLength()
   }
 
 }
