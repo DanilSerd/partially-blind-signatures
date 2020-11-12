@@ -4,7 +4,8 @@
   "description": "Implementation of Partially Blind Signatures as per Masayuki Abe and Tatsuaki Okamoto",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "run": "npm run build && node dist/index.js"
   },
   "repository": {
     "type": "git",
@@ -23,6 +24,7 @@
     "typescript": "^4.0.5"
   },
   "dependencies": {
+    "bitwise": "^2.0.4",
     "elliptic": "^6.5.3"
   }
 }
