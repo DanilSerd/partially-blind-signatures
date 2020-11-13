@@ -5,22 +5,21 @@ import { hashToPoint } from './hkdf'
 
 export const Secp256k1Curve = new ell.ec('secp256k1')
 
-interface Message1 {
+export interface Message1 {
   a: ell.curve.base.BasePoint
   b: ell.curve.base.BasePoint
 }
 
-type Message2 = BN
+export type Message2 = BN
 
-interface Message3 {
+export interface Message3 {
   r: BN
   c: BN
   s: BN
   d: BN
 }
 
-
-class Signiture {
+export class Signiture {
   constructor(public p: BN, public w: BN, public o: BN, public g: BN, public curve: ell.ec = Secp256k1Curve) {}
 
   verify(msg: string, info: string, pubKey: ell.curve.base.BasePoint): boolean {
@@ -31,24 +30,20 @@ class Signiture {
     const m = new BN(hash.sha256().update(msg).digest())
   
     const completeConstruction = 
-      curve.g.mul(sig.p).add(pubKey.mul(sig.w)).getX()
-        .or(curve.g.mul(sig.o).add(z.mul(sig.g)).getX())
+      curve.g.mul(this.p).add(pubKey.mul(this.w)).getX()
+        .or(curve.g.mul(this.o).add(z.mul(this.g)).getX())
         .or(z.getX())
         .or(m)
   
     const right = new BN(hash.sha256().update(completeConstruction).digest())
-    const left = sig.w.add(sig.g).mod(curve.n)
+    const left = this.w.add(this.g).mod(curve.n)
 
     return left.eq(right)
   }
 
-  encode() {
-    this.p.byteLength()
-  }
-
 }
 
-class Signer {
+export class Signer {
   private sk: BN
   private curve: ell.curve.base
   private u: BN
@@ -58,9 +53,9 @@ class Signer {
   constructor(sk: BN, info: string, curve: ell.ec = Secp256k1Curve) {
     this.sk = sk
     this.curve = curve.curve as ell.curve.base
-    this.u = Secp256k1Curve.genKeyPair().getPrivate()
-    this.s = Secp256k1Curve.genKeyPair().getPrivate()
-    this.d = Secp256k1Curve.genKeyPair().getPrivate()
+    this.u = curve.genKeyPair().getPrivate()
+    this.s = curve.genKeyPair().getPrivate()
+    this.d = curve.genKeyPair().getPrivate()
     this.infoBase = hashToPoint(info, curve)
   }
 
@@ -86,7 +81,7 @@ class Signer {
   }
 }
 
-class Requester {
+export class Requester {
   private signerPublicKey: ell.curve.base.BasePoint
   private curve: ell.curve.base
   private _eccrv: ell.ec
@@ -102,10 +97,10 @@ class Requester {
     this.curve = curve.curve as ell.curve.base
     this._eccrv = curve
     this.infoBase = hashToPoint(info, this._eccrv)
-    this.t1 = Secp256k1Curve.genKeyPair().getPrivate()
-    this.t2 = Secp256k1Curve.genKeyPair().getPrivate()
-    this.t3 = Secp256k1Curve.genKeyPair().getPrivate()
-    this.t4 = Secp256k1Curve.genKeyPair().getPrivate()
+    this.t1 = curve.genKeyPair().getPrivate()
+    this.t2 = curve.genKeyPair().getPrivate()
+    this.t3 = curve.genKeyPair().getPrivate()
+    this.t4 = curve.genKeyPair().getPrivate()
   }
 
   createMessage2(m: Message1): Message2 {
@@ -132,16 +127,3 @@ class Requester {
     )
   }
 }
-
-
-const s = new Signer(Secp256k1Curve.genKeyPair().getPrivate(), "info")
-const r = new Requester(s.getPubKey(), 'info', 'super secret message')
-
-const ab = s.createMessage1()
-const e = r.createMessage2(ab)
-const rcsd = s.createMessage3(e)
-const sig = r.createSig(rcsd)
-
-console.log(
-  sig.verify('super secret message', "info", s.getPubKey())
-)
